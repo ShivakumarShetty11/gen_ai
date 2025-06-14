@@ -8,7 +8,7 @@ import dagshub
 GEMINI_API_KEY = "AIzaSyCpHNl_rmvp-AMRn1KNPPxC4G1UMCmfGHc"  # Replace with your actual API key
 genai.configure(api_key=GEMINI_API_KEY)
 
-dagshub.init(repo_owner='@shivakumar.vahani', repo_name='MLfLow', mlflow=True)
+dagshub.init(repo_owner='shivakumar.vahani', repo_name='MLfLow', mlflow=True)
 mlflow.set_tracking_uri("https://dagshub.com/shivakumar.vahani/MLflow")
 
 eval_data = pd.DataFrame(
