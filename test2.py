@@ -33,17 +33,51 @@ eval_data = pd.DataFrame(
         ],
     }
 )
-def gemini_similarity_metric(predictions, targets, **kwargs):
-    scores = []
-    for pred, target in zip(predictions, targets):
-        response = genai.chat(model="gemini-pro", messages=[
-            {"role": "user", "parts": [f"Rate how similar the following answer is to the reference on a scale of 0 to 1.\nAnswer: {pred}\nReference: {target}"]}
-        ])
-        score = float(response.text.strip())
-        scores.append(score)
-    return sum(scores) / len(scores)
 
-# Custom Gemini model wrapper for MLflow
+# Custom Gemini-based answer similarity metric
+def gemini_answer_similarity(predictions, targets):
+    """Custom answer similarity metric using Gemini"""
+    similarities = []
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    
+    for pred, target in zip(predictions, targets):
+        prompt = f"""
+        Rate the similarity between these two answers on a scale of 0.0 to 1.0, where 1.0 means identical meaning and 0.0 means completely different.
+        Only respond with a single number between 0.0 and 1.0.
+        
+        Answer 1: {pred}
+        Answer 2: {target}
+        
+        Similarity score:
+        """
+        
+        try:
+            response = model.generate_content(prompt)
+            # Extract numerical score from response
+            score_text = response.text.strip()
+            # Try to extract the first number from the response
+            import re
+            numbers = re.findall(r'0\.\d+|1\.0|0|1', score_text)
+            if numbers:
+                score = min(1.0, max(0.0, float(numbers[0])))
+            else:
+                score = 0.5  # Default fallback
+            similarities.append(score)
+        except Exception as e:
+            print(f"Error calculating similarity: {e}")
+            similarities.append(0.5)  # Fallback score
+    
+    return {
+        "answer_similarity_score": sum(similarities) / len(similarities) if similarities else 0.0,
+        "individual_scores": similarities
+    }
+
+# Create custom metric
+gemini_similarity_metric = mlflow.metrics.make_metric(
+    eval_fn=gemini_answer_similarity,
+    greater_is_better=True,
+    name="gemini_answer_similarity"
+)
 class GeminiModel(mlflow.pyfunc.PythonModel):
     def __init__(self, model_name="gemini-1.5-flash", system_prompt=""):
         self.model_name = model_name
@@ -78,7 +112,7 @@ with mlflow.start_run() as run:
         eval_data,
         targets="ground_truth",
         model_type="question-answering",
-        extra_metrics=[mlflow.metrics.toxicity(), mlflow.metrics.latency(), mlflow.metrics.genai.answer_similarity()]
+        extra_metrics=[mlflow.metrics.toxicity(), mlflow.metrics.latency(), gemini_similarity_metric]
     )
     print(f"See aggregated evaluation results below: \n{results.metrics}")
 
